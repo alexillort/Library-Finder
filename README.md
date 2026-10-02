@@ -1,23 +1,19 @@
 # Library Finder · Mendeley Explorer
 
-MVP en Next.js 16 / React 19 / TypeScript para explorar una biblioteca con columnas tipo Finder e inspector. El modo demo funciona sin cuentas ni credenciales y conserva la biblioteca y los PDFs en IndexedDB, en el navegador actual.
+App en Next.js 16, React 19 y TypeScript con columnas tipo Finder, inspector y dos proveedores: **Demo** (IndexedDB local) y **Mendeley** (OAuth y API desde el servidor). La integración está conectada a la UI; las credenciales de una aplicación Mendeley son necesarias para usar una cuenta real.
 
 ## Correr localmente
 
-Requisito: Node.js 22.13 o superior (recomendado: Node.js 24 LTS) y npm.
-
-Desde una terminal en esta carpeta:
+Requiere Node.js 22.13 o superior y npm. En esta carpeta:
 
 ```sh
 npm install
 npm run dev
 ```
 
-Abre **http://127.0.0.1:3000**. Mantén la terminal abierta; Ctrl+C detiene el servidor. Si el puerto está ocupado, usa la dirección que Next.js imprime. Si ya hay un servidor de este mismo proyecto, abre su dirección en lugar de iniciar otro.
+Abre **http://127.0.0.1:3000** y mantén la terminal abierta. Ctrl+C detiene la app. En PowerShell usa `npm.cmd` si la política de ejecución bloquea `npm.ps1`.
 
-En PowerShell también puedes usar `npm.cmd install` y `npm.cmd run dev` si la política de ejecución bloquea `npm.ps1`.
-
-No copies `.env.example` para probar el demo: no necesita variables.
+Sin configuración inicia en Demo. Para producción local:
 
 ```sh
 npm run typecheck
@@ -26,127 +22,133 @@ npm run build
 npm start
 ```
 
-`build` produce el demo estático en `out/`; `start` lo sirve en el puerto 3000. Para el servidor con OAuth usa `npm run start:server`, después de habilitar las rutas y compilar en modo servidor.
+`build` genera una aplicación Next.js con servidor y rutas OAuth/API activas. Ya no es una exportación estática. `mendeley:enable` solo imprime instrucciones; no instala ni sobrescribe archivos.
 
-## Cómo probar
+## Conectar Mendeley
 
-La biblioteca contiene 18 referencias ficticias: 17 activas y una en Trash. Los PDFs de ejemplo son documentos de muestra, no artículos reales.
+1. Registra una aplicación en [Mendeley Developers](https://dev.mendeley.com/). Obtén su **Client ID** y **Client Secret**.
+2. Registra exactamente la URL de retorno del entorno donde usarás la app:
+   - Local: `http://127.0.0.1:3000/api/auth/mendeley/callback`.
+   - Sitio privado: `https://mendeley-library-finder.miunidad21.chatgpt.site/api/auth/mendeley/callback`.
+3. Para ejecución local, copia `.env.example` a `.env.local` y completa los cuatro valores. Genera el secreto con el comando siguiente; guarda su resultado únicamente en `.env.local`.
 
-1. Abre VR Security: muestra 5 documentos directos. Include descendants muestra 12 documentos únicos del árbol.
-2. Selecciona un artículo: el inspector muestra sus ubicaciones directas con rutas completas. Pulsa una ruta para navegar conservando la selección.
-3. Arrastra un artículo a una carpeta: añade la asignación sin quitar ninguna otra. También puedes usar Añadir ubicación en pantallas táctiles.
-4. Move permite elegir origen y destino: añade destino y quita exclusivamente el origen elegido. El resto de ubicaciones se conserva.
-5. La X junto a una ubicación quita esa relación. Al quitar la última, el documento aparece en Unsorted.
-6. Usa Nueva carpeta o Nueva subcarpeta. El botón de tres puntos de la carpeta seleccionada permite renombrarla y cambiar su carpeta padre.
-7. Subir PDF acepta varios archivos o arrastrarlos desde el sistema. Se verifica la cabecera PDF, con límite de 25 MB por archivo y 20 archivos por operación. En una carpeta se añaden directamente allí; en vistas virtuales se añaden sin clasificar.
-8. Editar cambia título, autores, año, publicación, DOI, etiquetas y resumen. Open y Download abren/descargan el archivo; Replace PDF conserva los metadatos y ubicaciones.
-9. Enviar a Trash conserva las asignaciones y el PDF. Desde Trash, Restaurar documento recupera el registro.
-10. Deshacer revierte hasta 20 operaciones de la sesión, incluyendo reemplazos de PDF. Ctrl/⌘ Z activa undo fuera de formularios; Ctrl/⌘ K enfoca búsqueda. Las flechas arriba/abajo recorren la lista.
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
 
-All Papers, Unsorted, Multiple Locations y Missing PDF excluyen Trash. La búsqueda opera sobre la vista actual por título, autores, año, DOI, publicación y etiquetas. Para buscar en toda la biblioteca, selecciona All Papers.
+| Variable del servidor | Valor |
+| --- | --- |
+| MENDELEY_CLIENT_ID | ID registrado de la aplicación |
+| MENDELEY_CLIENT_SECRET | Secreto de la aplicación |
+| MENDELEY_REDIRECT_URI | Callback exacto registrado en Mendeley |
+| SESSION_SECRET | 64 caracteres hexadecimales aleatorios (32 bytes) |
+
+4. Reinicia la app. Pulsa **Conectar Mendeley → Autorizar en Mendeley** e inicia sesión en Mendeley. Al volver se carga automáticamente la biblioteca real.
+5. En **Conexión Mendeley** puedes cambiar a Demo sin desconectar, volver a la biblioteca real o desconectar. Demo y Mendeley permanecen separados; los PDFs demo nunca se suben automáticamente.
+
+Para el sitio privado los valores se guardan como variables del servidor en Sites, con `MENDELEY_CLIENT_SECRET` y `SESSION_SECRET` marcados como secretos. La URL de retorno y el secreto interno ya están configurados; faltan las credenciales Mendeley. Un cambio de variables se aplica al publicar una versión. No guardes valores en `.openai/hosting.json`, Git ni archivos del frontend; nunca uses `NEXT_PUBLIC_` para secretos.
+
+El acceso privado al sitio lo administra Sites. El OAuth de Mendeley vincula una biblioteca externa y no reemplaza ese control de acceso. Desconectar borra las cookies de esta app; no elimina documentos ni revoca la aplicación en el portal de Mendeley.
+
+## Uso
+
+- Columnas muestran jerarquía padre/hijo. Direct only muestra asignaciones directas; Include descendants muestra documentos únicos de todo el árbol.
+- Cada artículo indica cuántas carpetas tiene. Appears in muestra rutas completas; pulsarlas navega conservando la selección.
+- All Papers, Unsorted, Multiple Locations y Missing PDF excluyen Trash. La búsqueda filtra la vista actual por título, autor, año, DOI, publicación y etiquetas; selecciona All Papers para buscar en toda la biblioteca.
+- Crear, renombrar y mover carpetas mantiene su contenido y rechaza ciclos o nombres iguales entre hermanos.
+- Arrastrar un documento **añade** una ubicación. Move añade destino y elimina únicamente el origen elegido. La X en Appears in elimina una relación; quitar la última asignación lleva el artículo a Unsorted.
+- Subir PDF admite hasta 20 archivos, 25 MB por archivo. En Mendeley la carga conjunta está limitada a 28 MB y la API extrae metadata. En una carpeta añade la asignación; en vistas virtuales carga sin clasificar.
+- Editar permite título, autores, año, publicación, DOI, etiquetas y resumen. En Mendeley separa autores con `;`, por ejemplo `Ana García; Luis Pérez`. Los autores sin editar y otros identificadores permanecen intactos.
+- Open, Download y preview obtienen el archivo real mediante un proxy autenticado. La tarjeta del inspector representa metadata; el visor completo usa el PDF.
+- Replace PDF adjunta el nuevo archivo antes de eliminar el seleccionado anterior. Conserva la referencia, metadata, ubicaciones y otros adjuntos. Los PDFs anteriores mayores de 25 MB no pueden reemplazarse en este MVP porque no puede conservar su copia para Deshacer.
+- Trash y Restore usan la papelera real. La app no ofrece borrado permanente de documentos. Mendeley determina las asignaciones recuperadas al restaurar; Deshacer un envío a Trash vuelve a añadir las ubicaciones originales registradas.
+- Deshacer mantiene hasta 20 operaciones durante la sesión. En Mendeley los tickets duran dos horas, están firmados y vinculados a la sesión. Una recarga/Actualización, desconexión o error de operación limpia el historial. Ctrl/⌘ Z deshace fuera de formularios; Ctrl/⌘ K enfoca búsqueda; las flechas recorren documentos.
+- Actualizar consulta nuevamente la biblioteca. Si otro cliente cambió los datos, la app rechaza una escritura con revisión antigua y recarga antes de continuar.
+
+El demo contiene 18 referencias ficticias (17 activas y una en Trash), con PDFs de muestra. VR Security contiene 5 directos y 12 únicos incluyendo descendientes. Demo guarda biblioteca y archivos en IndexedDB; borrar los datos del navegador los elimina. Cada origen/navegador/dispositivo tiene un demo independiente.
 
 ## Arquitectura
 
 ```text
-app/page.tsx + app/layout.tsx         Next.js App Router y metadata
-components/library-finder.tsx        Columnas, navegación, inspector, formularios
-app/globals.css                      Diseño responsive y estados visuales
-lib/domain.ts                       Modelo, selectores y comandos inmutables
-lib/demo.ts                         Datos ficticios iniciales
-lib/provider.ts                     Contrato LibraryProvider
-lib/demo-provider.ts                 Persistencia IndexedDB y transacciones
-lib/pdf.ts                          PDF de muestra y validación de uploads
-integrations/mendeley/oauth.ts       Authorization Code, refresh y sesión cifrada
-integrations/mendeley/client.ts      Cliente de API, paginación y operaciones
-integrations/mendeley/auth-route.ts  Plantilla de Route Handler OAuth
-scripts/enable-mendeley.mjs          Instala las rutas OAuth opcionales
-tests/domain.test.ts                Invariantes del modelo y casos de integración simulados
+app/page.tsx + components/library-finder.tsx     UI compartida
+app/globals.css                               Diseño responsive
+lib/domain.ts                                Modelo y reglas inmutables
+lib/demo-provider.ts                          IndexedDB y undo por snapshots
+lib/mendeley-provider.ts                      Cliente del servidor y copias PDF para undo
+app/api/auth/mendeley/[action]/route.ts        OAuth, status, refresh, disconnect
+app/api/mendeley/[action]/route.ts             Library, commands, undo y file
+integrations/mendeley/oauth.ts                Intercambio y cifrado de tokens
+integrations/mendeley/session.ts              Sesión, renovación y control de origen
+integrations/mendeley/client.ts               Cliente API y paginación
+integrations/mendeley/library.ts              Normalización, mutaciones y undo firmado
+integrations/mendeley/validation.ts           Validación del servidor
+integrations/mendeley/runtime-env.ts          Variables de servidor por solicitud
+build/sites-worker.ts + vite.config.ts        Adaptador Vinext / Cloudflare para Sites
+tests/domain.test.ts + tests/mendeley.test.ts  Pruebas de dominio e integración simulada
 ```
 
-La UI utiliza actualmente `demoProvider`. `LibraryProvider` define load, execute, restore y getPdf para sustituir el almacenamiento sin alterar el modelo. El dominio distingue pertenencia directa de presencia en descendientes y calcula cada total como un conjunto de documentos únicos.
+`LibraryProvider` comparte `load`, `execute`, `restore` y `getPdf`. La UI elige proveedor según sesión OAuth y preferencia Demo/Mendeley. Mendeley es la fuente de datos; no se almacena una copia persistente de la biblioteca en el servidor. Las colecciones siguen `Link: rel=next`. Carpetas, referencias, papelera y archivos se consultan paginados; las asignaciones directas se reconstruyen con cuatro solicitudes simultáneas como máximo.
 
-Las mutaciones del demo guardan metadata y archivos en la misma transacción IndexedDB. Una revisión incremental detecta escrituras concurrentes desde otras pestañas y evita sobrescribirlas. En ese caso se recargan los datos y se invalida el historial undo anterior.
+Las revisiones remotas derivan del contenido normalizado. Antes de escribir se consulta la biblioteca y se compara la revisión. La API no proporciona una transacción global: puede haber cambios externos durante una operación. Los errores parciales explican el resultado y requieren recargar; no se reintentan escrituras automáticamente. Un 429 muestra un aviso y conserva `Retry-After`.
 
-## Modelo de datos
+En Demo, metadata y archivos se guardan en una transacción IndexedDB con revisión incremental. En Mendeley, `restore` utiliza un ticket firmado del último comando y ejecuta acciones compensatorias; nunca acepta un snapshot del navegador para sobrescribir una biblioteca real. Los tickets comprueban el estado del elemento afectado para conservar cambios posteriores. La copia del PDF para Deshacer permanece solo en memoria del navegador. Restaurar un PDF crea un adjunto nuevo; su ID puede cambiar. Una secuencia de reemplazos cuyos IDs cambian puede invalidar un Deshacer anterior; la app lo comunica sin forzar la reversión.
 
-| Entidad | Campos principales | Regla |
+## Modelo
+
+| Entidad | Campos | Regla |
 | --- | --- | --- |
-| Folder | id, name, parentId | parentId null representa la raíz. No admite ciclos ni nombres iguales entre hermanos. |
-| Paper | id, title, authors, year, journal, doi, abstract, tags | Metadata editable. |
-| Asignación | Paper.folderIds | Relación muchos a muchos; IDs únicos, exclusivamente directos. |
-| PDF | key, name, size, mock | Blob separado de metadata, conservado para undo. |
-| Trash | Paper.trashed | Borrado lógico, mantiene archivo y asignaciones. |
-| Library | version, revision, folders, papers | Snapshot serializable y control de concurrencia. |
+| Folder | id, name, parentId | null representa raíz; sin ciclos |
+| Paper | id, title, authors, year, journal, doi, abstract, tags, addedAt | Metadata editable |
+| Asignaciones | Paper.folderIds | IDs únicos y exclusivamente directos |
+| PDF | key, name, size, mock | ID de archivo Mendeley o clave IndexedDB |
+| Trash | Paper.trashed | Papelera lógica |
+| Library | version, revision, folders, papers | Biblioteca normalizada y revisión |
 
-Las carpetas virtuales son selectores derivados, no carpetas persistentes. Renombrar o mover una carpeta actualiza las rutas calculadas sin reescribir documentos.
+Las carpetas virtuales son selectores, no registros persistentes. Las rutas se calculan con parentId. Si una referencia contiene varios PDFs, el inspector selecciona uno de forma determinista por ID; los otros adjuntos se conservan.
 
-## Preparación para Mendeley OAuth 2.0
+## Rutas implementadas
 
-**La integración real está preparada como base de servidor, pero no conectada a la UI del MVP ni validada con una cuenta real.** Activar OAuth no cambia automáticamente el proveedor del demo.
-
-1. Registra una aplicación en el [Developer Portal de Mendeley](https://dev.mendeley.com/).
-2. Registra exactamente la URL de callback que usarás. La plantilla local utiliza `http://127.0.0.1:3000/api/auth/mendeley/callback`.
-3. Ejecuta `npm run mendeley:enable`. Copia la plantilla a `app/api/auth/mendeley/[action]/route.ts`.
-4. Copia `.env.example` a `.env.local`, completa sus valores y reinicia Next.js.
-
-| Variable de servidor | Propósito |
-| --- | --- |
-| MENDELEY_SERVER=1 | Desactiva exportación estática para usar Route Handlers. |
-| MENDELEY_CLIENT_ID | ID de aplicación registrada. |
-| MENDELEY_CLIENT_SECRET | Secreto de la aplicación, nunca en el frontend. |
-| MENDELEY_REDIRECT_URI | Callback idéntico al registrado en Mendeley. |
-| SESSION_SECRET | 32 bytes aleatorios como 64 caracteres hexadecimales. |
-
-Puedes generar SESSION_SECRET con `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` y guardar el resultado solo en `.env.local`.
-
-No uses prefijos NEXT_PUBLIC_ para estos valores. La plantilla valida state, intercambia el code mediante HTTP Basic, permite renovación, y cifra los tokens con AES-256-GCM en una cookie HttpOnly y SameSite=Lax. La cookie es Secure con un callback HTTPS. La desconexión y renovación exigen un POST del mismo origen. No se devuelven tokens al navegador en JSON.
-
-### Rutas OAuth instalables
-
-| Ruta local | Método | Función |
+| Ruta propia | Método | Función |
 | --- | --- | --- |
-| /api/auth/mendeley/start | GET | Redirige a autorización de Mendeley con state aleatorio. |
-| /api/auth/mendeley/callback | GET | Valida state, intercambia code y guarda sesión cifrada. |
-| /api/auth/mendeley/status | GET | Estado de autorización; la UI sigue en demo. |
-| /api/auth/mendeley/refresh | POST | Renueva tokens sin exponerlos. |
-| /api/auth/mendeley/disconnect | POST | Borra la sesión de esta app. |
+| /api/auth/mendeley/start | GET | Autorización con state |
+| /api/auth/mendeley/callback | GET | Intercambio de code, cookie y retorno a la app |
+| /api/auth/mendeley/status | GET | Configuración y conexión, sin secretos |
+| /api/auth/mendeley/refresh | POST | Renovación explícita |
+| /api/auth/mendeley/disconnect | POST | Borrar sesión |
+| /api/mendeley/library | GET | Biblioteca completa normalizada |
+| /api/mendeley/commands | POST | Comando con expectedRevision; JSON o multipart con operation y archivos por key |
+| /api/mendeley/undo | POST | Ticket, expectedRevision y backup opcional |
+| /api/mendeley/file?id=... | GET | PDF real por proxy |
 
-### Endpoints previstos para el proveedor remoto
-
-Base: `https://api.mendeley.com`. El cliente incluido implementa los bloques siguientes con cabeceras de media type por recurso y Authorization Bearer, siguiendo Link para paginación.
-
-| Operación | Endpoint Mendeley |
+| Operación | API Mendeley |
 | --- | --- |
-| Listar / crear carpetas | GET / POST /folders |
-| Renombrar / mover carpeta | PATCH /folders/{id} con name y parent_id |
-| Documentos de biblioteca | GET /documents?view=all |
-| Asignaciones directas | GET /folders/{id}/documents |
-| Añadir ubicación | POST /folders/{id}/documents con {id: documentId} |
-| Quitar ubicación | DELETE /folders/{id}/documents/{documentId} |
-| Editar metadata | PATCH /documents/{id} |
-| Upload de PDF con extracción de metadata | POST /documents con Content-Type: application/pdf |
-| Listar adjuntos de un documento | GET /files?document_id={id} |
-| Enviar a papelera | POST /documents/{id}/trash |
-| Listar / restaurar papelera | GET /trash · POST /trash/{id}/restore |
-| Abrir / descargar PDF (siguiente etapa) | GET /files/{id}, a través de proxy autorizado |
-| Reemplazar PDF (siguiente etapa) | Crear nuevo adjunto /files antes de eliminar el anterior; validar el contrato real con una cuenta. |
+| Carpetas | GET/POST /folders; PATCH/DELETE /folders/{id} |
+| Documentos | GET /documents?view=all; GET/PATCH /documents/{id} |
+| Asignaciones | GET/POST /folders/{id}/documents; DELETE /folders/{id}/documents/{documentId} |
+| Upload con extracción | POST /documents con application/pdf |
+| Adjuntos | GET/POST /files; GET/DELETE /files/{id} |
+| Papelera | POST /documents/{id}/trash; GET /trash; POST /trash/{id}/restore |
 
-Move remoto consta de añadir y después quitar; la API no ofrece una transacción entre ambas llamadas. El cliente nunca quita origen si falla añadir destino y comunica un resultado parcial si falla el segundo paso.
+La eliminación de carpetas solo se utiliza para Deshacer la creación de una carpeta vacía. Replace PDF y su inversa reemplazan el adjunto seleccionado; este MVP no gestiona anotaciones del archivo. No asumas que anotaciones, historial o IDs de archivos se recuperan al reemplazar un PDF.
 
-Para completar la conexión: implementar un `MendeleyProvider` de servidor que normalice `parent_id`, autores, identifiers y adjuntos; reconstruir membresías consultando cada carpeta; añadir rutas propias de biblioteca, comandos y archivos; introducir control de sesión/origen y una cola para 429; implementar undo como operaciones compensatorias y sustituir la instancia demo en la UI. La autorización sola no activa sincronización. Mantén separados los datos demo y los datos remotos.
+Los contratos se contrastaron con la [referencia oficial](https://dev.mendeley.com/methods/) y [Authorization Code](https://dev.mendeley.com/reference/topics/authorization_auth_code.html). Sin credenciales no se ha realizado una prueba con una biblioteca real.
 
-Los endpoints y flujo se contrastaron con la [referencia oficial](https://dev.mendeley.com/methods/) y la [documentación Authorization Code](https://dev.mendeley.com/reference/topics/authorization_auth_code.html) el 2 de octubre de 2026. La disponibilidad y permisos finales requieren prueba con credenciales reales.
+## Seguridad y límites
 
-## Límites del MVP
+Los tokens se cifran con AES-256-GCM en una cookie HttpOnly, SameSite=Lax y Secure con HTTPS. Se renuevan automáticamente antes de caducar; nunca se devuelven al frontend. Los POST comprueban el origen configurado, validan comandos y limitan el tamaño del cuerpo. Los datos personalizados responden `private, no-store`. OAuth usa state aleatorio con vencimiento de diez minutos. No se registran credenciales ni tokens.
 
-- Los datos demo y archivos son locales al origen, navegador y dispositivo. localhost y 127.0.0.1 son orígenes diferentes; usa siempre la misma dirección. No hay sincronización entre dispositivos.
-- Los cambios sobreviven a recargas; undo solo dura la sesión abierta. Borrar datos del navegador elimina la biblioteca demo y los PDFs subidos.
-- No hay extracción automática de metadata en demo; el título inicial proviene del nombre de archivo.
-- El preview completo usa el visor PDF del navegador. La tarjeta del inspector es una representación de metadata, no una miniatura renderizada del archivo.
-- Los Blobs anteriores se retienen para undo; no se implementa limpieza automática ni borrado permanente.
-- La publicación estática contiene solo el demo. OAuth necesita un despliegue Next.js con servidor Node y variables protegidas.
-- La herramienta WebMCP opcional `read_library_view` es de solo lectura y utiliza los mismos selectores visibles; navegadores sin WebMCP funcionan normalmente.
+Las llamadas con Bearer permanecen en `api.mendeley.com`. El proxy acepta la redirección firmada de Mendeley únicamente a HTTPS en Mendeley/Amazon S3/CloudFront y descarga sin reenviar el token. Preview/descarga mediante la app tiene límite de 40 MB. Si Mendeley cambia sus dominios de almacenamiento será necesario actualizar esa lista.
 
-## Validación
+La biblioteca se carga en memoria; esta primera versión no implementa sincronización incremental ni caché para bibliotecas muy grandes. Se refresca manualmente y después de operaciones. El servidor no guarda PDFs ni una biblioteca en D1/R2 porque los datos reales residen en Mendeley. Los límites de acceso y disponibilidad dependen de Mendeley y de la app registrada.
 
-`npm test` cubre contadores únicos, carpetas virtuales, asignaciones, Move, ciclos de carpetas, metadata, Trash/restore, snapshots y reemplazos, PDFs, state OAuth, cifrado, paginación y protección del origen en el cliente. `npm run typecheck` comprueba también las plantillas de integración. `npm run build` verifica la compilación y exportación de producción.
+## Publicación y validación
+
+Local usa Next.js. Sites usa Vinext para adaptar los mismos componentes y Route Handlers a un Worker compatible con Cloudflare:
+
+```sh
+npm run build:site
+```
+
+El artefacto está en `dist/server` y `dist/client`, con metadata de hosting en `dist/.openai`. El flujo de publicación de Sites verifica/push el código y empaqueta esta salida conservando el proyecto y su acceso privado. `SITE_BUILD=1 npm run build` elige este adaptador cuando el publicador usa el script estándar.
+
+Las 25 pruebas cubren pertenencia directa, conjuntos únicos, filtros, ciclos, metadata, upload, PDF, OAuth, paginación, protección de redirecciones, normalización API, revisiones, resultados parciales de Move, undo firmado, carpetas, papelera y reemplazo. `typecheck`, producción Next.js y producción Worker también se verifican. La herramienta opcional WebMCP `read_library_view` es de solo lectura.

@@ -36,11 +36,13 @@
   "include": [
     "next-env.d.ts",
     "app/**/*.tsx",
+    "app/**/*.ts",
     "components/library-finder.tsx",
     "lib/domain.ts",
     "lib/demo.ts",
     "lib/demo-provider.ts",
     "lib/provider.ts",
+    "lib/mendeley-provider.ts",
     "lib/pdf.ts",
     "integrations/**/*.ts",
     "tests/**/*.ts",

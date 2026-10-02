@@ -1,4 +1,5 @@
 import handler from "vinext/server/fetch-handler";
+import { withRuntimeEnv } from '../integrations/mendeley/runtime-env';
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
@@ -23,6 +24,6 @@ export default {
         },
       };
     }
-    return runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
+    return withRuntimeEnv(env as Record<string,unknown>,()=>runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx)));
   },
 };

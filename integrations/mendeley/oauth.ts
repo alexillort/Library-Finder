@@ -1,9 +1,11 @@
 // Server only: never import this module into a client component.
 import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
-export type TokenSet = { access_token:string; refresh_token:string; expires_at:number };
+import { runtimeEnv } from './runtime-env.ts';
+export type TokenSet = { access_token:string; refresh_token:string; expires_at:number; session_id?:string };
 export const SESSION_COOKIE='lf_mendeley_session',STATE_COOKIE='lf_mendeley_state';
 export function config(){
- const clientId=process.env.MENDELEY_CLIENT_ID,clientSecret=process.env.MENDELEY_CLIENT_SECRET,redirectUri=process.env.MENDELEY_REDIRECT_URI,secret=process.env.SESSION_SECRET;
+ const env=runtimeEnv();const clientId=env.MENDELEY_CLIENT_ID,clientSecret=env.MENDELEY_CLIENT_SECRET,redirectUri=env.MENDELEY_REDIRECT_URI,secret=env.SESSION_SECRET;
+ if(typeof clientId!=='string'||typeof clientSecret!=='string'||typeof redirectUri!=='string'||typeof secret!=='string')throw new Error('Mendeley requiere configuración de servidor.');
  if(!clientId||!clientSecret||!redirectUri||!secret||!/^[a-f\d]{64}$/i.test(secret))throw new Error('Mendeley requiere configuración de servidor.');
  const url=new URL(redirectUri);if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw new Error('La redirección OAuth requiere HTTPS.');
  return {clientId,clientSecret,redirectUri,key:Buffer.from(secret,'hex'),origin:url.origin,secure:url.protocol==='https:'};

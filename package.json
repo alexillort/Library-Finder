@@ -7,10 +7,12 @@
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
-    "build": "next build --webpack",
-    "start": "node scripts/serve-demo.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/domain.test.ts",
+    "build": "node scripts/build-app.mjs",
+    "build:next": "next build --webpack",
+    "build:site": "node scripts/run-framework.mjs build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/domain.test.ts tests/mendeley.test.ts",
     "mendeley:enable": "node scripts/enable-mendeley.mjs",
     "start:server": "next start --hostname 127.0.0.1"
   },
