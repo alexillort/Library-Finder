@@ -9,6 +9,7 @@ const commands=z.discriminatedUnion('type',[
  z.object({type:z.literal('editFolder'),id,name,parentId:id.nullable()}),
  z.object({type:z.literal('add'),id,target:id}),z.object({type:z.literal('move'),id,source:id,target:id}),z.object({type:z.literal('remove'),id,source:id}),
  z.object({type:z.literal('trash'),id}),z.object({type:z.literal('restore'),id}),z.object({type:z.literal('metadata'),id,metadata}),
- z.object({type:z.literal('upload'),papers:z.array(paper).min(1).max(20)}),z.object({type:z.literal('replace'),id,pdf})
+ z.object({type:z.literal('upload'),papers:z.array(paper).min(1).max(20)}),z.object({type:z.literal('replace'),id,pdf}),
+ z.object({type:z.literal('resolveDuplicates'),keeperId:id,duplicateIds:z.array(id).min(1).max(19),metadata})
 ]);
 export function parseCommand(input:unknown):Command{const result=commands.safeParse(input);if(!result.success)throw new Error('Los datos de la operación no son válidos. Revisa el formulario.');return result.data;}

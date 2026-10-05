@@ -4,6 +4,7 @@ import { MendeleyClient,type ApiDocument,type ApiFile } from '../integrations/me
 import { loadLibrary,mutateLibrary,undoLibrary,mapLimit } from '../integrations/mendeley/library.ts';
 import { parseCommand } from '../integrations/mendeley/validation.ts';
 import { samplePdf } from '../lib/pdf.ts';
+import {duplicateMetadata} from '../lib/duplicates.ts';
 process.env.MENDELEY_CLIENT_ID='test';process.env.MENDELEY_CLIENT_SECRET='test';process.env.MENDELEY_REDIRECT_URI='http://127.0.0.1:3000/api/auth/mendeley/callback';process.env.SESSION_SECRET='ab'.repeat(32);
 function fixture(){
  const folders=[{id:'root',name:'Research'},{id:'child',name:'Child',parent_id:'root'},{id:'other',name:'Other'}];
@@ -45,3 +46,28 @@ test('upload maps temporary ID to real ID, extracts metadata and undo sends docu
 test('undo rejects later edits even when caller has refreshed its revision',()=>withFixture(async(f,api)=>{const l=await loadLibrary(api),r=await mutateLibrary(api,'owner',{type:'add',id:'doc',target:'other'},l.revision,new Map());f.relations.root=[];const fresh=await loadLibrary(api);await assert.rejects(undoLibrary(api,'owner',r.undo,fresh.revision),/cambió después/);assert.deepEqual(f.relations.other,['doc']);}));
 test('download uses signed URL without bearer and rejects unsafe redirect',async()=>{const original=globalThis.fetch;try{let calls=0;globalThis.fetch=(async(_url,init)=>{calls++;if(calls===1)return new Response(null,{status:303,headers:{Location:'https://bucket.s3.amazonaws.com/signed.pdf'}});assert.equal(new Headers(init?.headers).get('Authorization'),null);return new Response(samplePdf('test'));}) as typeof fetch;assert.ok((await new MendeleyClient('secret').downloadFile('file')).size>0);globalThis.fetch=(async()=>new Response(null,{status:303,headers:{Location:'http://127.0.0.1/private'}})) as typeof fetch;await assert.rejects(new MendeleyClient('secret').downloadFile('file'),/Destino/);}finally{globalThis.fetch=original;}});
 test('server validates commands and concurrency stays bounded',async()=>{assert.throws(()=>parseCommand({type:'metadata',id:'doc',metadata:{title:''}}));assert.throws(()=>parseCommand({type:'deleteEverything'}));let active=0,max=0;const rows=await mapLimit([1,2,3,4,5,6],3,async n=>{active++;max=Math.max(max,active);await new Promise(resolve=>setTimeout(resolve,2));active--;return n*2;});assert.equal(max,3);assert.deepEqual(rows,[2,4,6,8,10,12]);});
+function addDuplicate(f:ReturnType<typeof fixture>,id='copy'){
+ f.docs[0].identifiers!.doi='10.5555/duplicate';f.docs.push({id,title:'Imported original',authors:[{first_name:'Ana',last_name:'García'}],year:2024,source:'Selected publication',abstract:'Imported abstract',tags:['import'],identifiers:{doi:'https://doi.org/10.5555/DUPLICATE'}});f.relations.other.push(id);f.getFiles().push({id:`pdf-${id}`,document_id:id,file_name:`${id}.pdf`,mime_type:'application/pdf',size:200});
+}
+test('duplicate resolution and signed undo preserve reference IDs, exact authors, folders, identifiers and every PDF',()=>withFixture(async(f,api)=>{
+ addDuplicate(f);f.docs[1].title='A separate unrelated paper';const before=await loadLibrary(api),group=before.papers.filter(p=>['doc','copy'].includes(p.id));const command={type:'resolveDuplicates' as const,keeperId:'doc',duplicateIds:['copy'],metadata:duplicateMetadata(group,'doc')};
+ const result=await mutateLibrary(api,'owner',parseCommand(command),before.revision,new Map());const keeper=result.library.papers.find(p=>p.id==='doc')!;
+ assert.deepEqual(keeper.folderIds,['child','other','root']);assert.deepEqual(keeper.tags,['import','topic']);assert.equal(keeper.journal,'Selected publication');assert.equal(keeper.pdf?.key,'file');assert.equal(f.docs[0].identifiers!.pmid,'123');assert.ok(f.trash.has('copy'));assert.equal(f.getFiles().length,2);assert.equal(f.calls.some(c=>c.path.startsWith('/files/')&&c.method==='DELETE'),false);
+ const restored=await undoLibrary(api,'owner',result.undo,result.library.revision);assert.equal(f.trash.size,0);assert.deepEqual(restored.papers.find(p=>p.id==='doc')?.folderIds,['child','root']);assert.deepEqual(restored.papers.find(p=>p.id==='copy')?.folderIds,['other']);assert.equal(restored.papers.find(p=>p.id==='doc')?.journal,'');assert.deepEqual(f.docs[0].authors,[{first_name:'Ana',last_name:'García'}]);assert.equal(f.getFiles().length,2);
+}));
+test('choosing authors from another duplicate preserves structured multi-part names',()=>withFixture(async(f,api)=>{
+ addDuplicate(f);const copy=f.docs.find(p=>p.id==='copy')!;copy.authors=[{first_name:'María del Carmen',last_name:'de la Cruz'}];const l=await loadLibrary(api),p=l.papers.find(p=>p.id==='doc')!;const authors=l.papers.find(p=>p.id==='copy')!.authors;
+ await mutateLibrary(api,'owner',{type:'resolveDuplicates',keeperId:'doc',duplicateIds:['copy'],metadata:{...duplicateMetadata(l.papers.filter(p=>['doc','copy'].includes(p.id)),'doc'),authors}},l.revision,new Map());assert.deepEqual(f.docs[0].authors,copy.authors);assert.equal(p.authors,'Ana García');
+}));
+test('failed location preservation prevents trashing copies and reports a partial operation',()=>withFixture(async(f,api)=>{
+ addDuplicate(f);const l=await loadLibrary(api);f.fail.add('POST /folders/other/documents');await assert.rejects(mutateLibrary(api,'owner',{type:'resolveDuplicates',keeperId:'doc',duplicateIds:['copy'],metadata:duplicateMetadata(l.papers.filter(p=>['doc','copy'].includes(p.id)),'doc')},l.revision,new Map()),/0 copia.*Recarga/);assert.equal(f.trash.size,0);assert.deepEqual(f.relations.other,['copy']);assert.equal(f.getFiles().length,2);
+}));
+test('a partial trash operation reports its count and retains every PDF for recovery',()=>withFixture(async(f,api)=>{
+ addDuplicate(f);addDuplicate(f,'copy-2');const l=await loadLibrary(api);f.fail.add('POST /documents/copy-2/trash');await assert.rejects(mutateLibrary(api,'owner',{type:'resolveDuplicates',keeperId:'doc',duplicateIds:['copy','copy-2'],metadata:duplicateMetadata(l.papers.filter(p=>['doc','copy','copy-2'].includes(p.id)),'doc')},l.revision,new Map()),/1 copia.*Recarga/);assert.deepEqual([...f.trash],['copy']);assert.equal(f.getFiles().length,3);assert.ok(f.relations.other.includes('doc'));
+}));
+test('duplicate undo rejects subsequent edits to the preserved reference',()=>withFixture(async(f,api)=>{
+ addDuplicate(f);const l=await loadLibrary(api);const result=await mutateLibrary(api,'owner',{type:'resolveDuplicates',keeperId:'doc',duplicateIds:['copy'],metadata:duplicateMetadata(l.papers.filter(p=>['doc','copy'].includes(p.id)),'doc')},l.revision,new Map());f.docs[0].title='Changed afterwards';const fresh=await loadLibrary(api);await assert.rejects(undoLibrary(api,'owner',result.undo,fresh.revision),/cambió después/);assert.ok(f.trash.has('copy'));
+}));
+test('duplicate command validation rejects unrelated IDs without sending mutations',()=>withFixture(async(f,api)=>{
+ const l=await loadLibrary(api);await assert.rejects(mutateLibrary(api,'owner',{type:'resolveDuplicates',keeperId:'doc',duplicateIds:['missing'],metadata:duplicateMetadata(l.papers,'doc')},l.revision,new Map()),/grupo/);assert.equal(f.calls.filter(c=>c.method!=='GET').length,0);assert.throws(()=>parseCommand({type:'resolveDuplicates',keeperId:'doc',duplicateIds:[],metadata:{title:'test'}}));
+}));

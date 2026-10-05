@@ -13,10 +13,13 @@ export async function loadLibrary(api:MendeleyClient):Promise<Library>{
  const lib:Library={version:1,revision:0,folders:folders.map(f=>({id:f.id,name:f.name,parentId:f.parent_id||null})).sort((a,b)=>a.id.localeCompare(b.id)),papers};
  lib.revision=Number.parseInt(createHash('sha256').update(JSON.stringify(lib)).digest('hex').slice(0,12),16);return lib;
 }
-type Inverse={type:'commands';commands:Command[]}|{type:'deleteFolder';id:string}|{type:'metadata';id:string;patch:Partial<ApiDocument>}|{type:'replace';id:string;newKey:string;oldName:string|null};
+type Inverse={type:'commands';commands:Command[]}|{type:'deleteFolder';id:string}|{type:'metadata';id:string;patch:Partial<ApiDocument>}|{type:'replace';id:string;newKey:string;oldName:string|null}|{type:'duplicates';keeperId:string;patch:Partial<ApiDocument>;addedLocations:string[];originals:{id:string;folderIds:string[]}[]};
 type Guard={kind:'folder'|'locations'|'metadata'|'trash'|'pdf'|'papers';ids:string[];expected:string};
 type Ticket={owner:string;expires:number;inverse:Inverse;guard:Guard};
 function projection(lib:Library,guard:Pick<Guard,'kind'|'ids'>){return JSON.stringify(guard.ids.map(id=>{const p=lib.papers.find(p=>p.id===id);if(guard.kind==='folder')return lib.folders.find(f=>f.id===id);if(guard.kind==='locations')return p?.folderIds;if(guard.kind==='trash')return p?.trashed;if(guard.kind==='pdf')return p?.pdf;if(guard.kind==='metadata'&&p)return metadataOf(p);return p;}));}
+const hashProjection=(value:string)=>`sha256:${createHash('sha256').update(value).digest('hex')}`;
+function originalMetadata(p:ApiDocument):Partial<ApiDocument>{return {title:p.title,authors:p.authors||[],year:p.year??null,source:p.source||'',abstract:p.abstract||'',tags:p.tags||[],identifiers:p.identifiers||{}} as Partial<ApiDocument>;}
+async function restoreMetadata(api:MendeleyClient,id:string,patch:Partial<ApiDocument>){const current=await api.document(id);await api.editDocument(id,{...patch,identifiers:{...current.identifiers,doi:patch.identifiers?.doi||''}});}
 export function metadataOf(p:Paper):Metadata{return {title:p.title,authors:p.authors,year:p.year,journal:p.journal,doi:p.doi,abstract:p.abstract,tags:p.tags};}
 function signTicket(owner:string,inverse:Inverse,guard:Guard){const encoded=Buffer.from(JSON.stringify({owner,expires:Date.now()+2*60*60*1000,inverse,guard})).toString('base64url');const signature=createHmac('sha256',config().key).update(encoded).digest('base64url');return `${encoded}.${signature}`;}
 function readTicket(value:string,owner:string):Ticket{try{if(value.length>150000)throw 0;const [encoded,signature]=value.split('.');const expected=createHmac('sha256',config().key).update(encoded).digest();const actual=Buffer.from(signature,'base64url');if(actual.length!==expected.length||!timingSafeEqual(actual,expected))throw 0;const t=JSON.parse(Buffer.from(encoded,'base64url').toString()) as Ticket;if(t.owner!==owner||t.expires<Date.now())throw 0;return t;}catch{throw new Error('El historial de Deshacer expiró o pertenece a otra sesión.');}}
@@ -25,6 +28,18 @@ async function runCommand(api:MendeleyClient,command:Command){switch(command.typ
 export async function mutateLibrary(api:MendeleyClient,owner:string,command:Command,expected:number,blobs:Map<string,File>){
  const before=await loadLibrary(api);requireRevision(before,expected);const validated=applyCommand(before,command);let inverse:Inverse={type:'commands',commands:[]};let kind:Guard['kind']='locations';let ids='id' in command?[command.id]:[];const idMap:Record<string,string>={};const p='id' in command?before.papers.find(p=>p.id===command.id):undefined;
  switch(command.type){
+  case 'resolveDuplicates':{
+   const keeper=before.papers.find(p=>p.id===command.keeperId)!,edited=validated.papers.find(p=>p.id===command.keeperId)!,original=await api.document(keeper.id);
+   const originals=command.duplicateIds.map(id=>({id,folderIds:before.papers.find(p=>p.id===id)!.folderIds}));const addedLocations=edited.folderIds.filter(id=>!keeper.folderIds.includes(id));
+   inverse={type:'duplicates',keeperId:keeper.id,patch:originalMetadata(original),addedLocations,originals};
+   if(Buffer.byteLength(JSON.stringify(inverse))>80000)throw new Error('Este grupo supera el tamaño del historial. Revisa menos referencias a la vez.');
+   const patch:Partial<ApiDocument>={title:edited.title,source:edited.journal,abstract:edited.abstract,tags:edited.tags,identifiers:{...original.identifiers,doi:edited.doi},year:edited.year?Number(edited.year):null} as Partial<ApiDocument>;
+   if(edited.authors!==keeper.authors){const source=before.papers.find(p=>[keeper.id,...command.duplicateIds].includes(p.id)&&p.authors===edited.authors);if(source)patch.authors=(await api.document(source.id)).authors||[];else throw new Error('Selecciona los autores de una referencia del grupo.');}
+   let completed=0;
+   try{await api.editDocument(keeper.id,patch);for(const target of addedLocations)await api.addToFolder(keeper.id,target);for(const id of command.duplicateIds){await api.trashDocument(id);completed++;}}
+   catch{throw new Error(`La revisión no se completó: ${completed} copia(s) enviada(s) a Trash. La referencia elegida puede tener metadatos y ubicaciones actualizados. Recarga y revisa el grupo antes de continuar.`);}
+   ids=[keeper.id,...command.duplicateIds];kind='papers';break;
+  }
   case 'createFolder':{const f=await api.createFolder(command.folder.name.trim(),command.folder.parentId||undefined);idMap[command.folder.id]=f.id;ids=[f.id];kind='folder';inverse={type:'deleteFolder',id:f.id};break;}
   case 'editFolder':{const old=before.folders.find(f=>f.id===command.id)!;await api.editFolder(command.id,command.name.trim(),command.parentId);kind='folder';inverse={type:'commands',commands:[{type:'editFolder',...old}]};break;}
   case 'add':if(!p!.folderIds.includes(command.target)){await api.addToFolder(command.id,command.target);inverse={type:'commands',commands:[{type:'remove',id:command.id,source:command.target}]};}break;
@@ -36,13 +51,17 @@ export async function mutateLibrary(api:MendeleyClient,owner:string,command:Comm
   case 'upload':{ids=[];const done:string[]=[];try{for(const paper of command.papers){const file=blobs.get(paper.pdf!.key);if(!file)throw new Error('Falta el archivo PDF.');const doc=await api.uploadPdf(file,file.name);done.push(doc.id);ids.push(doc.id);idMap[paper.id]=doc.id;for(const target of paper.folderIds)await api.addToFolder(doc.id,target);}}catch{throw new Error(`${done.length} PDF(s) creados antes del error. Recarga: los documentos creados permanecen en tu biblioteca; no repitas toda la carga.`);}kind='papers';inverse={type:'commands',commands:ids.map(id=>({type:'trash',id}))};break;}
   case 'replace':{const file=blobs.get(command.pdf.key);if(!file)throw new Error('Falta el archivo PDF.');const newKey=await api.attachPdf(command.id,file,file.name);if(p!.pdf&&p!.pdf.key!==newKey){try{await api.deleteFile(p!.pdf.key);}catch{throw new Error('Se adjuntó el nuevo PDF, pero el anterior sigue en Mendeley. Recarga para comprobar los archivos.');}}kind='pdf';inverse={type:'replace',id:command.id,newKey,oldName:p!.pdf?.name||null};break;}
  }
- const library=await loadLibrary(api);const guard:Guard={kind,ids,expected:''};guard.expected=projection(library,guard);return {library,idMap,undo:signTicket(owner,inverse,guard)};
+ const library=await loadLibrary(api);const guard:Guard={kind,ids,expected:''};guard.expected=command.type==='resolveDuplicates'?hashProjection(projection(library,guard)):projection(library,guard);return {library,idMap,undo:signTicket(owner,inverse,guard)};
 }
 export async function undoLibrary(api:MendeleyClient,owner:string,ticket:string,expected:number,backup?:File){
- const before=await loadLibrary(api);requireRevision(before,expected);const t=readTicket(ticket,owner);if(projection(before,t.guard)!==t.guard.expected)throw new Error('Ese elemento cambió después de la operación. Deshacer se canceló para conservar los cambios posteriores.');
+ const before=await loadLibrary(api);requireRevision(before,expected);const t=readTicket(ticket,owner);const actual=projection(before,t.guard);if((t.guard.expected.startsWith('sha256:')?hashProjection(actual):actual)!==t.guard.expected)throw new Error('Ese elemento cambió después de la operación. Deshacer se canceló para conservar los cambios posteriores.');
  const op=t.inverse;
  if(op.type==='deleteFolder'){if(before.folders.some(f=>f.parentId===op.id)||before.papers.some(p=>p.folderIds.includes(op.id)))throw new Error('La carpeta ya contiene documentos o subcarpetas.');await api.deleteFolder(op.id);}
- else if(op.type==='metadata'){const current=await api.document(op.id);await api.editDocument(op.id,{...op.patch,identifiers:{...current.identifiers,doi:op.patch.identifiers?.doi||''}});}
+ else if(op.type==='metadata')await restoreMetadata(api,op.id,op.patch);
+ else if(op.type==='duplicates'){
+  try{for(const original of op.originals){await api.restoreDocument(original.id);for(const target of original.folderIds)await api.addToFolder(original.id,target);}await restoreMetadata(api,op.keeperId,op.patch);for(const target of op.addedLocations)await api.removeFromFolder(op.keeperId,target);}
+  catch{throw new Error('Deshacer quedó incompleto. Algunas referencias pueden haberse restaurado. Recarga y revisa Trash y las ubicaciones antes de continuar.');}
+ }
  else if(op.type==='replace'){if(op.oldName){if(!backup)throw new Error('La copia del PDF anterior ya no está en esta sesión.');const key=await api.attachPdf(op.id,backup,op.oldName);if(key!==op.newKey)await api.deleteFile(op.newKey);}else await api.deleteFile(op.newKey);}
  else for(const command of op.commands)await runCommand(api,command);
  return loadLibrary(api);

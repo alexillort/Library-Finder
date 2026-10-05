@@ -46,7 +46,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 4. Reinicia la app. Pulsa **Conectar Mendeley → Autorizar en Mendeley** e inicia sesión en Mendeley. Al volver se carga automáticamente la biblioteca real.
 5. En **Conexión Mendeley** puedes cambiar a Demo sin desconectar, volver a la biblioteca real o desconectar. Demo y Mendeley permanecen separados; los PDFs demo nunca se suben automáticamente.
 
-Para el sitio privado los valores se guardan como variables del servidor en Sites, con `MENDELEY_CLIENT_SECRET` y `SESSION_SECRET` marcados como secretos. La URL de retorno y el secreto interno ya están configurados; faltan las credenciales Mendeley. Un cambio de variables se aplica al publicar una versión. No guardes valores en `.openai/hosting.json`, Git ni archivos del frontend; nunca uses `NEXT_PUBLIC_` para secretos.
+Para el sitio privado los valores se guardan como variables del servidor en Sites, con las credenciales y `SESSION_SECRET` marcados como secretos. Un cambio de variables se aplica al publicar una versión. No guardes valores en `.openai/hosting.json`, Git ni archivos del frontend; nunca uses `NEXT_PUBLIC_` para secretos.
 
 El acceso privado al sitio lo administra Sites. El OAuth de Mendeley vincula una biblioteca externa y no reemplaza ese control de acceso. Desconectar borra las cookies de esta app; no elimina documentos ni revoca la aplicación en el portal de Mendeley.
 
@@ -67,12 +67,29 @@ El acceso privado al sitio lo administra Sites. El OAuth de Mendeley vincula una
 
 El demo contiene 18 referencias ficticias (17 activas y una en Trash), con PDFs de muestra. VR Security contiene 5 directos y 12 únicos incluyendo descendientes. Demo guarda biblioteca y archivos en IndexedDB; borrar los datos del navegador los elimina. Cada origen/navegador/dispositivo tiene un demo independiente.
 
+## Gestionar duplicados
+
+**Duplicates** agrupa referencias activas independientes. Un artículo asignado a varias carpetas mantiene un solo ID y no se considera duplicado. El contador lateral indica grupos; la búsqueda muestra el grupo completo si cualquiera de sus copias coincide.
+
+- **Mismo DOI:** compara DOI normalizados (incluidos enlaces doi.org, prefijo `doi:` y diferencias de mayúsculas).
+- **Posible duplicado:** título normalizado coincidente de al menos tres palabras y 20 caracteres, con autor o año disponible y compatible. Se ignoran diferencias de acentos y puntuación, pero no se agrupan títulos con DOI, autores o años conocidos contradictorios. La detección es orientativa y no cambia datos automáticamente.
+- Inspecciona cada copia para ver PDF, metadata y **Appears in**. Puedes enviarla individualmente a Trash, ocultar la coincidencia en este navegador o elegir **Revisar y conservar una**.
+- En la revisión, elige la referencia cuyo ID quieres conservar (especialmente si ya la citaste). Elige los valores de metadata de las copias; sus etiquetas y ubicaciones se reúnen. El ID, PDF, notas y otros adjuntos de la referencia conservada permanecen intactos.
+- Las otras referencias van a Trash con sus PDFs y notas originales. No se transfieren PDFs/anotaciones de otras copias al registro conservado y no hay borrado permanente. **Deshacer** recupera las referencias, metadata y ubicaciones originales; **Restore** recupera una copia individual desde Trash.
+- Mendeley utiliza PATCH de metadata, altas de asignaciones y envíos a papelera; no dispone de una transacción global ni se llama a un endpoint de fusión. Se revisan hasta 20 referencias por operación. Un error parcial informa cuántas copias se enviaron a Trash y recarga la biblioteca para revisarla antes de continuar.
+
+En Demo, **Cargar ejemplos de duplicados** añade cuatro referencias ficticias opcionales (un grupo por DOI y otro posible). Esta operación también puede deshacerse. Las coincidencias ocultas se guardan en localStorage por modo; **Volver a mostrar** permite revisarlas otra vez.
+
+La vista sigue el flujo de [revisión de duplicados de Mendeley Reference Manager](https://www.elsevier.support/mendeley/answer/how-do-i-check-for-duplicates-in-mendeley-reference-manager), con comparación de metadata y conservación de ubicaciones adicionales.
+
 ## Arquitectura
 
 ```text
 app/page.tsx + components/library-finder.tsx     UI compartida
 app/globals.css                               Diseño responsive
 lib/domain.ts                                Modelo y reglas inmutables
+lib/duplicates.ts + components/duplicates-view.tsx  Detección, grupos y revisión
+lib/duplicate-demo.ts                         Ejemplos opcionales de duplicados
 lib/demo-provider.ts                          IndexedDB y undo por snapshots
 lib/mendeley-provider.ts                      Cliente del servidor y copias PDF para undo
 app/api/auth/mendeley/[action]/route.ts        OAuth, status, refresh, disconnect
@@ -84,7 +101,7 @@ integrations/mendeley/library.ts              Normalización, mutaciones y undo 
 integrations/mendeley/validation.ts           Validación del servidor
 integrations/mendeley/runtime-env.ts          Variables de servidor por solicitud
 build/sites-worker.ts + vite.config.ts        Adaptador Vinext / Cloudflare para Sites
-tests/domain.test.ts + tests/mendeley.test.ts  Pruebas de dominio e integración simulada
+tests/*.test.ts                               Pruebas de dominio, duplicados e integración simulada
 ```
 
 `LibraryProvider` comparte `load`, `execute`, `restore` y `getPdf`. La UI elige proveedor según sesión OAuth y preferencia Demo/Mendeley. Mendeley es la fuente de datos; no se almacena una copia persistente de la biblioteca en el servidor. Las colecciones siguen `Link: rel=next`. Carpetas, referencias, papelera y archivos se consultan paginados; las asignaciones directas se reconstruyen con cuatro solicitudes simultáneas como máximo.
@@ -151,4 +168,4 @@ npm run build:site
 
 El artefacto está en `dist/server` y `dist/client`, con metadata de hosting en `dist/.openai`. El flujo de publicación de Sites verifica/push el código y empaqueta esta salida conservando el proyecto y su acceso privado. `SITE_BUILD=1 npm run build` elige este adaptador cuando el publicador usa el script estándar.
 
-Las 25 pruebas cubren pertenencia directa, conjuntos únicos, filtros, ciclos, metadata, upload, PDF, OAuth, paginación, protección de redirecciones, normalización API, revisiones, resultados parciales de Move, undo firmado, carpetas, papelera y reemplazo. `typecheck`, producción Next.js y producción Worker también se verifican. La herramienta opcional WebMCP `read_library_view` es de solo lectura.
+Las 37 pruebas cubren pertenencia directa, conjuntos únicos, filtros, ciclos, metadata, upload, PDF, OAuth, paginación, protección de redirecciones, normalización API, revisiones, resultados parciales de Move, undo firmado, carpetas, papelera, reemplazo, detección de duplicados, conservación de ubicaciones/PDFs y revisión reversible de grupos. `typecheck`, producción Next.js y producción Worker también se verifican. La herramienta opcional WebMCP `read_library_view` es de solo lectura.

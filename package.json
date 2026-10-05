@@ -12,7 +12,7 @@
     "build:site": "node scripts/run-framework.mjs build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/domain.test.ts tests/mendeley.test.ts",
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/domain.test.ts tests/duplicates.test.ts tests/mendeley.test.ts",
     "mendeley:enable": "node scripts/enable-mendeley.mjs",
     "start:server": "next start --hostname 127.0.0.1"
   },

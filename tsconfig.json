@@ -38,6 +38,7 @@
     "app/**/*.tsx",
     "app/**/*.ts",
     "components/library-finder.tsx",
+    "components/duplicates-view.tsx",
     "lib/domain.ts",
     "lib/demo.ts",
     "lib/demo-provider.ts",
