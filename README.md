@@ -24,6 +24,36 @@ npm start
 
 `build` genera una aplicación Next.js con servidor y rutas OAuth/API activas. Ya no es una exportación estática. `mendeley:enable` solo imprime instrucciones; no instala ni sobrescribe archivos.
 
+## Versiones
+
+| Versión | Comando | Resultado |
+| --- | --- | --- |
+| Web | `npm run dev` / `npm run build` + `npm start` | Navegador en `http://127.0.0.1:3000` |
+| Portable (Windows) | `npm run dist:portable` | `release/LibraryFinder-Portable-<versión>.exe`, sin instalación |
+| Instalable (Windows) | `npm run dist:installer` | `release/LibraryFinder-Setup-<versión>.exe`, con accesos directos y desinstalador |
+
+`npm run dist:desktop` genera ambos ejecutables. Las versiones de escritorio usan Electron con el servidor Next.js embebido (`output: "standalone"` en `.next-desktop/`), así que OAuth, el proxy de PDFs y el modo Demo funcionan igual que en la web.
+
+- **Primer arranque:** una ventana pide el Client ID y el Client Secret de Mendeley y muestra la URL de retorno exacta que hay que registrar. El secreto y `SESSION_SECRET` (generado automáticamente) se guardan cifrados con la cuenta de Windows; no se usa `.env.local`. **Usar solo Demo** abre la app sin Mendeley. **Archivo → Configurar Mendeley…** permite cambiarlo después.
+- **Puerto:** por defecto 3000, el mismo callback que la versión web local. Si el puerto está ocupado (por ejemplo, por `npm run dev`), la app lo indica y permite elegir otro; en ese caso registra la nueva URL de retorno en Mendeley. El modo Demo guarda sus datos por puerto.
+- **Datos:** el instalable guarda configuración, sesión y Demo en `%APPDATA%\Library Finder`. El portable los guarda en `LibraryFinderData\`, junto al `.exe`. Si el portable se abre en otro equipo o usuario de Windows, pide de nuevo el Client Secret, porque no puede descifrarlo.
+- **Inicio de sesión:** Mendeley se autoriza dentro de la ventana de la app. Los enlaces externos se abren en el navegador del sistema. **Ver → Volver a la biblioteca** (Alt+Inicio) regresa si se abandona el inicio de sesión.
+- Los ejecutables no están firmados; Windows SmartScreen puede mostrar «Windows protegió su PC» → **Más información → Ejecutar de todas formas**.
+
+Para probar sin empaquetar: `npm run desktop:prepare` y después `npm run desktop:start`.
+
+## GitHub Actions
+
+- **CI** (`.github/workflows/ci.yml`): en cada push a `main` y en cada pull request ejecuta `typecheck`, pruebas y la compilación web.
+- **Release desktop** (`.github/workflows/release.yml`): al subir una etiqueta `v<versión>` igual a `version` de `package.json`, compila en Windows el portable y el instalable y los publica en una GitHub Release. Desde **Actions → Release desktop → Run workflow** se pueden compilar sin publicar (quedan como artefactos descargables).
+
+```sh
+npm version patch        # actualiza package.json y crea la etiqueta vX.Y.Z
+git push --follow-tags
+```
+
+La versión web sigue publicándose en Sites con `npm run build:site`; GitHub solo la valida.
+
 ## Conectar Mendeley
 
 1. Registra una aplicación en [Mendeley Developers](https://dev.mendeley.com/). Obtén su **Client ID** y **Client Secret**.

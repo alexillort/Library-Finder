@@ -46,3 +46,8 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+
+# desktop (Electron) build output
+/.next-desktop/
+/.desktop-build/
+/release/

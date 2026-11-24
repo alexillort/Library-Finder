@@ -14,7 +14,12 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test --test-isolation=none tests/domain.test.ts tests/duplicates.test.ts tests/mendeley.test.ts",
     "mendeley:enable": "node scripts/enable-mendeley.mjs",
-    "start:server": "next start --hostname 127.0.0.1"
+    "start:server": "next start --hostname 127.0.0.1",
+    "desktop:prepare": "node scripts/build-desktop.mjs --prepare-only",
+    "desktop:start": "electron desktop/main.cjs",
+    "dist:portable": "node scripts/build-desktop.mjs portable",
+    "dist:installer": "node scripts/build-desktop.mjs nsis",
+    "dist:desktop": "node scripts/build-desktop.mjs portable nsis"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -52,6 +57,8 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
     "json-rpc-2.0": "1.7.1",

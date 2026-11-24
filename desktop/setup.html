@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'">
+  <title>Library Finder · Configuración</title>
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="logo" aria-hidden="true">LF</div>
+      <div>
+        <h1>Library Finder</h1>
+        <p class="muted" id="edition"></p>
+      </div>
+    </header>
+
+    <p class="alert" id="message" role="alert" hidden></p>
+
+    <form id="form" novalidate>
+      <section>
+        <h2>Conectar Mendeley</h2>
+        <p class="muted">Usa las credenciales de tu aplicación en Mendeley Developers. Se guardan cifradas con tu cuenta de Windows y nunca salen de este equipo. Sin credenciales, la app abre el modo Demo.</p>
+        <label>Client ID
+          <input id="clientId" autocomplete="off" spellcheck="false" maxlength="200">
+        </label>
+        <label>Client Secret
+          <input id="clientSecret" type="password" autocomplete="off" spellcheck="false" maxlength="500">
+          <span class="hint" id="secretHint"></span>
+        </label>
+      </section>
+
+      <section>
+        <h2>URL de retorno</h2>
+        <p class="muted">Registra exactamente esta URL en tu aplicación de Mendeley.</p>
+        <div class="row">
+          <code id="redirect"></code>
+          <button type="button" id="copy">Copiar</button>
+        </div>
+        <label class="inline">Puerto
+          <input id="port" type="number" min="1024" max="65535" step="1">
+        </label>
+        <p class="hint">Si cambias el puerto, la URL cambia y los datos del modo Demo empiezan vacíos (se guardan por puerto).</p>
+      </section>
+
+      <p class="error" id="error" role="alert" hidden></p>
+
+      <footer>
+        <a href="#" id="developers">Abrir Mendeley Developers</a>
+        <span class="spacer"></span>
+        <button type="button" id="demo">Usar solo Demo</button>
+        <button type="submit" class="primary" id="save">Guardar y abrir</button>
+      </footer>
+      <p class="hint" id="dataDir"></p>
+    </form>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>
