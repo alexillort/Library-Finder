@@ -1,7 +1,8 @@
 // Builds the Windows desktop app.
 //   node scripts/build-desktop.mjs --prepare-only   server + app files in .desktop-build/
 //   node scripts/build-desktop.mjs portable nsis    also packages into release/
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -90,7 +91,12 @@ await build({
     directories: { app: appOut, output },
     files: ['**/*'],
     asar: true,
-    extraResources: [{ from: serverOut, to: 'server', filter: ['**/*'] }],
+    // electron-builder always drops a node_modules folder at the root of each
+    // `from`, so the server's dependencies need an entry of their own.
+    extraResources: [
+      { from: serverOut, to: 'server', filter: ['**/*'] },
+      { from: join(serverOut, 'node_modules'), to: 'server/node_modules', filter: ['**/*'] },
+    ],
     win: {
       ...(existsSync(iconPath) ? { icon: iconPath } : {}),
       executableName: 'LibraryFinder',
@@ -109,9 +115,43 @@ await build({
   },
 });
 
-// 6. Sanity check: the unpacked app must contain the server and its static assets.
-const unpacked = join(output, 'win-unpacked', 'resources', 'server');
-for (const required of ['server.js', 'server-runner.cjs', join('.next-desktop', 'static'), 'public']) {
+// 6. Smoke test: start the packaged server with the packaged LibraryFinder.exe
+// (as Node, like the app does) and check that the API and the page respond.
+step('Probando el servidor empaquetado');
+const unpackedDir = join(output, 'win-unpacked');
+const unpacked = join(unpackedDir, 'resources', 'server');
+for (const required of ['server.js', 'server-runner.cjs', join('node_modules', 'next', 'package.json'), join('.next-desktop', 'static'), 'public']) {
   if (!existsSync(join(unpacked, required))) throw new Error(`Falta ${required} en el paquete (${unpacked}).`);
+}
+const port = await new Promise((resolvePort) => {
+  const probe = createServer();
+  probe.listen(0, '127.0.0.1', () => { const { port: free } = probe.address(); probe.close(() => resolvePort(free)); });
+});
+const smoke = spawn(join(unpackedDir, 'LibraryFinder.exe'), [join(unpacked, 'server-runner.cjs')], {
+  cwd: unpacked,
+  env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+let smokeLog = '';
+smoke.stdout.on('data', (chunk) => { smokeLog += chunk; });
+smoke.stderr.on('data', (chunk) => { smokeLog += chunk; });
+try {
+  const deadline = Date.now() + 60000;
+  let status = null;
+  while (Date.now() < deadline && smoke.exitCode === null) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/auth/mendeley/status`);
+      status = await response.json();
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  if (!status) throw new Error(`El servidor empaquetado no respondió.\n${smokeLog}`);
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  if (!page.ok) throw new Error(`La página principal respondió ${page.status}.\n${smokeLog}`);
+  console.log(`Servidor OK en el puerto ${port} (configured=${status.configured}).`);
+} finally {
+  smoke.kill();
 }
 console.log(`\nListo. Ejecutables en ${output}`);
