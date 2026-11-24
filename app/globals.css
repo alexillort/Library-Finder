@@ -16,3 +16,7 @@
 @media(max-width:520px){.duplicates-view{padding:14px}.duplicate-inspect{gap:9px;padding-left:8px}.duplicate-facts{font-size:11px}.duplicate-number{width:22px;height:22px}.duplicate-group>header{padding:15px}.resolution-summary{padding:13px}.duplicate-review .modal-footer>.primary{width:100%;white-space:normal}.duplicate-review .modal-footer>.button{width:100%}}
 /* Connection setup and account controls. */
 .connection-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.setup-pending{display:flex;align-items:center;gap:8px;color:#996329!important}.setup-steps{text-align:left;padding-left:22px;font-size:13px;line-height:1.7}.setup-steps li{margin:12px 0}.setup-steps a{color:#2274c7}.callback-address{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #dce0e5;border-radius:7px;font-size:12px;background:#f6f7f9;color:#39485b}.connect-content>a.primary{display:inline-flex;text-decoration:none;gap:10px}.loading-screen{gap:12px}.demo-badge{font-size:9px}
+
+/* Sidebar collapse: wider screens hide it in place, narrow ones use the drawer. */
+@media(min-width:761px){.app-shell.sidebar-collapsed>.sidebar{display:none}}
+@media(max-width:760px){.sidebar-toggle.toggled{background:transparent;color:inherit}}

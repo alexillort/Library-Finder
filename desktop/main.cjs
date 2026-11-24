@@ -314,6 +314,14 @@ function buildMenu() {
       label: 'Ver',
       submenu: [
         { label: 'Volver a la biblioteca', accelerator: 'Alt+Home', click: () => { authFlow = false; mainWindow?.loadURL(appOrigin()); } },
+        {
+          label: 'Mostrar u ocultar barra lateral',
+          // The page handles Ctrl+B itself; the menu only shows the shortcut.
+          accelerator: 'CmdOrCtrl+B',
+          registerAccelerator: false,
+          click: () => mainWindow?.webContents.executeJavaScript("window.dispatchEvent(new Event('lf:toggle-sidebar'))").catch(() => {}),
+        },
+        { type: 'separator' },
         { role: 'reload', label: 'Recargar' },
         { type: 'separator' },
         { role: 'zoomIn', label: 'Acercar' },

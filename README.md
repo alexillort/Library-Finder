@@ -1,5 +1,7 @@
 # Library Finder · Mendeley Explorer
 
+**Versión estable: 1.0.0.** Es la base de referencia para la web, el portable y el instalable; las versiones 0.x fueron previas y la 0.1.0 de escritorio no arranca su servidor.
+
 App en Next.js 16, React 19 y TypeScript con columnas tipo Finder, inspector y dos proveedores: **Demo** (IndexedDB local) y **Mendeley** (OAuth y API desde el servidor). La integración está conectada a la UI; las credenciales de una aplicación Mendeley son necesarias para usar una cuenta real.
 
 ## Correr localmente
@@ -93,6 +95,7 @@ El acceso privado al sitio lo administra Sites. El OAuth de Mendeley vincula una
 - Replace PDF adjunta el nuevo archivo antes de eliminar el seleccionado anterior. Conserva la referencia, metadata, ubicaciones y otros adjuntos. Los PDFs anteriores mayores de 25 MB no pueden reemplazarse en este MVP porque no puede conservar su copia para Deshacer.
 - Trash y Restore usan la papelera real. La app no ofrece borrado permanente de documentos. Mendeley determina las asignaciones recuperadas al restaurar; Deshacer un envío a Trash vuelve a añadir las ubicaciones originales registradas.
 - Deshacer mantiene hasta 20 operaciones durante la sesión. En Mendeley los tickets duran dos horas, están firmados y vinculados a la sesión. Una recarga/Actualización, desconexión o error de operación limpia el historial. Ctrl/⌘ Z deshace fuera de formularios; Ctrl/⌘ K enfoca búsqueda; las flechas recorren documentos.
+- El botón de barra lateral de la barra superior (o Ctrl/⌘ B, o **Ver → Mostrar u ocultar barra lateral** en escritorio) la oculta o la muestra. En ventanas anchas se oculta en su sitio y la preferencia se recuerda; en pantallas estrechas se abre como panel.
 - Actualizar consulta nuevamente la biblioteca. Si otro cliente cambió los datos, la app rechaza una escritura con revisión antigua y recarga antes de continuar.
 
 El demo contiene 18 referencias ficticias (17 activas y una en Trash), con PDFs de muestra. VR Security contiene 5 directos y 12 únicos incluyendo descendientes. Demo guarda biblioteca y archivos en IndexedDB; borrar los datos del navegador los elimina. Cada origen/navegador/dispositivo tiene un demo independiente.
